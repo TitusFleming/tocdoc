@@ -16,7 +16,7 @@
     "verify": "node scripts/verify-setup.js"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.14.6",
+    "@clerk/nextjs": "^6.20.2",
     "@hookform/resolvers": "^3.10.0",
     "@prisma/client": "^6.1.0",
     "@radix-ui/react-alert-dialog": "^1.1.2",
