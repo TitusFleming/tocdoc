@@ -14,40 +14,10 @@ const sidebarLinks = [
     icon: LayoutDashboard,
   },
   {
-    title: "Patients",
-    href: "/dashboard/patients",
-    icon: Users,
-  },
-  {
     title: "Admin Panel",
     href: "/dashboard/admin",
     icon: Shield,
     adminOnly: true,
-  },
-  {
-    title: "Notifications",
-    href: "/dashboard/notifications",
-    icon: Bell,
-  },
-  {
-    title: "Appointments",
-    href: "/dashboard/appointments",
-    icon: Calendar,
-  },
-  {
-    title: "Reports",
-    href: "/dashboard/reports",
-    icon: FileText,
-  },
-  {
-    title: "Settings",
-    href: "/dashboard/settings",
-    icon: Settings,
-  },
-  {
-    title: "Help & Support",
-    href: "/dashboard/support",
-    icon: HelpCircle,
   },
 ]
 

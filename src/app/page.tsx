@@ -1,161 +1,354 @@
+"use client"
+
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { FileText, Menu, X, Heart } from "lucide-react"
+import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs"
+import { useState } from "react"
 
 export default function Home() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState('home')
+
   return (
     <div className="flex min-h-screen flex-col">
+      {/* Mobile-first responsive header */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-6 w-6 text-blue-600"
-            >
-              <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-            <span className="text-xl font-bold text-blue-600">TOCdoc</span>
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          {/* Logo - Always visible */}
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity" onClick={() => setActiveTab('home')}>
+            <Heart className="h-6 w-6 text-blue-600 sm:h-7 sm:w-7" />
+            <span className="text-xl font-bold sm:text-2xl text-[var(--primary-color,#0369a1)]">TOCdoctor.com</span>
+          </Link>
+
+          {/* Desktop Navigation - Hidden on mobile */}
+          <div className="hidden md:flex items-center gap-6">
+            <nav className="flex items-center gap-6 mr-6">
+              <button 
+                onClick={() => setActiveTab('home')}
+                className={`text-sm font-medium transition-colors hover:text-blue-600 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-600'}`}
+              >
+                Home
+              </button>
+              <button 
+                onClick={() => setActiveTab('about')}
+                className={`text-sm font-medium transition-colors hover:text-blue-600 ${activeTab === 'about' ? 'text-blue-600' : 'text-gray-600'}`}
+              >
+                About
+              </button>
+              <button 
+                onClick={() => setActiveTab('support')}
+                className={`text-sm font-medium transition-colors hover:text-blue-600 ${activeTab === 'support' ? 'text-blue-600' : 'text-gray-600'}`}
+              >
+                Support
+              </button>
+            </nav>
+            <SignedOut>
+              <Link href="/sign-in">
+                <Button variant="outline" className="min-w-[80px]">Login</Button>
+              </Link>
+              <Link href="/sign-up">
+                <Button className="min-w-[90px]">Register</Button>
+              </Link>
+            </SignedOut>
+            <SignedIn>
+              <Link href="/auth-redirect">
+                <Button variant="outline" className="min-w-[100px]">Dashboard</Button>
+              </Link>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
           </div>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="#features" className="text-sm font-medium hover:underline">
-              Features
+
+          {/* Mobile Menu Button - Only visible on mobile */}
+          <button
+            className="md:hidden rounded-md p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            aria-label="Toggle menu"
+          >
+            {isMenuOpen ? (
+              <X className="h-6 w-6" />
+            ) : (
+              <Menu className="h-6 w-6" />
+            )}
+          </button>
+        </div>
+
+        {/* Mobile Navigation Menu */}
+        <div className={`md:hidden transition-all duration-300 ease-in-out ${
+          isMenuOpen 
+            ? 'max-h-screen opacity-100 border-t' 
+            : 'max-h-0 opacity-0 overflow-hidden'
+        }`}>
+          <div className="px-4 py-4 space-y-3 bg-background/95">
+            {/* Mobile Navigation Links */}
+            <div className="space-y-2 border-b pb-3 mb-3">
+              <button 
+                onClick={() => {setActiveTab('home'); setIsMenuOpen(false)}}
+                className={`block w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'home' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'}`}
+              >
+                Home
+              </button>
+              <button 
+                onClick={() => {setActiveTab('about'); setIsMenuOpen(false)}}
+                className={`block w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'about' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'}`}
+              >
+                About
+              </button>
+              <button 
+                onClick={() => {setActiveTab('support'); setIsMenuOpen(false)}}
+                className={`block w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'support' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'}`}
+              >
+                Support
+              </button>
+            </div>
+            
+            <SignedOut>
+              <Link 
+                href="/sign-in" 
+                onClick={() => setIsMenuOpen(false)}
+                className="block w-full"
+              >
+                <Button variant="outline" className="w-full justify-start min-h-[44px]">
+                  Login
+                </Button>
+              </Link>
+              <Link 
+                href="/sign-up" 
+                onClick={() => setIsMenuOpen(false)}
+                className="block w-full"
+              >
+                <Button className="w-full justify-start min-h-[44px]">
+                  Register
+                </Button>
             </Link>
-            <Link href="#compliance" className="text-sm font-medium hover:underline">
-              HIPAA Compliance
+            </SignedOut>
+            <SignedIn>
+              <Link 
+                href="/auth-redirect" 
+                onClick={() => setIsMenuOpen(false)}
+                className="block w-full"
+              >
+                <Button variant="outline" className="w-full justify-start min-h-[44px]">
+                  Dashboard
+                </Button>
             </Link>
-            <Link href="#contact" className="text-sm font-medium hover:underline">
-              Contact
-            </Link>
-          </nav>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="hidden md:block">
-              <Button>Access Portal</Button>
-            </Link>
+              <div className="flex justify-center pt-2">
+                <UserButton afterSignOutUrl="/" />
+              </div>
+            </SignedIn>
           </div>
         </div>
       </header>
+      
+      {/* Main content with responsive padding */}
       <main className="flex-1">
-        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-48">
-          <div className="container px-4 md:px-6">
-            <div className="flex flex-col items-center space-y-4 text-center">
-              <div className="space-y-2">
-                <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl lg:text-6xl/none">
-                  Hospital Discharge Notifications
-                </h1>
-                <p className="mx-auto max-w-[700px] text-gray-500 md:text-xl dark:text-gray-400">
-                  HIPAA-compliant portal for physicians to receive discharge notifications and manage transition of care coordination.
-                </p>
-              </div>
-              <div className="space-x-4">
-                <Link href="/dashboard">
-                  <Button className="bg-blue-600 hover:bg-blue-700">
-                    Access Portal
-                  </Button>
-                </Link>
-                <Button variant="outline">
-                  Request Demo
-                </Button>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* Home Tab Content */}
+        {activeTab === 'home' && (
+          <section className="relative">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <div className="flex min-h-[calc(100vh-4rem)] sm:min-h-[calc(100vh-5rem)] items-center justify-center py-12 sm:py-16 lg:py-20">
+                <div className="text-center space-y-6 sm:space-y-8 max-w-4xl">
+                  {/* Decorative line */}
+                  <div className="text-2xl sm:text-3xl text-gray-400 font-light">⸻</div>
+                  
+                  {/* Main heading with improved typography */}
+                  <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-light tracking-wide leading-tight">
+                    <span className="block text-gray-900">Transition Of Care</span>
+                    <span className="block text-[var(--primary-color,#0369a1)] font-semibold">Doctor.com</span>
+                  </h1>
+                  
+                  {/* Description with client content */}
+                  <p className="text-lg sm:text-xl lg:text-2xl text-gray-600 leading-relaxed max-w-3xl mx-auto px-2 font-light">
+                    TOCdoctor.com keeps hospitals, post-acute facilities, and primary care providers connected in real time. By streamlining communication at every transition of care, TOCdoctor.com closes gaps, reduces readmissions, and delivers smoother experiences for both patients and providers.
+                  </p>
 
-        <section id="features" className="w-full py-12 md:py-24 lg:py-32 bg-gray-50 dark:bg-gray-900">
-          <div className="container px-4 md:px-6">
-            <h2 className="text-3xl font-bold tracking-tighter sm:text-5xl text-center mb-12">
-              Core Features
-            </h2>
-            <div className="grid gap-6 lg:grid-cols-3 lg:gap-12">
-              <div className="flex flex-col items-center space-y-4 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
-                  <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-5 5-5-5h5V12h10v5z"/>
-                  </svg>
+                  {/* Responsive action buttons */}
+                  <div className="pt-8 sm:pt-10">
+                    <SignedOut>
+                      <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center items-center max-w-sm sm:max-w-none mx-auto">
+                        <Link href="/sign-in" className="w-full sm:w-auto">
+                          <Button 
+                            variant="outline" 
+                            size="lg" 
+                            className="w-full sm:w-auto min-w-[160px] min-h-[52px] text-lg font-medium"
+                          >
+                            Login
+                          </Button>
+                        </Link>
+                        <Link href="/sign-up" className="w-full sm:w-auto">
+                          <Button 
+                            size="lg" 
+                            className="w-full sm:w-auto min-w-[160px] min-h-[52px] text-lg font-medium"
+                          >
+                            Register
+                          </Button>
+                        </Link>
+                      </div>
+                    </SignedOut>
+                    <SignedIn>
+                      <Link href="/auth-redirect" className="inline-block">
+                        <Button 
+                          size="lg" 
+                          className="min-w-[180px] min-h-[52px] text-lg font-medium"
+                        >
+                          Go to Dashboard
+                        </Button>
+                      </Link>
+                    </SignedIn>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold">Discharge Notifications</h3>
-                <p className="text-gray-500 dark:text-gray-400">
-                  Receive secure notifications when your patients are admitted or discharged from hospitals.
-                </p>
-              </div>
-              <div className="flex flex-col items-center space-y-4 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
-                  <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold">Care Coordination</h3>
-                <p className="text-gray-500 dark:text-gray-400">
-                  Access essential patient information to facilitate timely follow-up and reduce rehospitalization.
-                </p>
-              </div>
-              <div className="flex flex-col items-center space-y-4 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
-                  <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold">HIPAA Compliant</h3>
-                <p className="text-gray-500 dark:text-gray-400">
-                  Secure, encrypted portal with 30-day record retention and full HIPAA compliance.
-                </p>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
-        <section id="compliance" className="w-full py-12 md:py-24 lg:py-32">
-          <div className="container px-4 md:px-6">
-            <div className="flex flex-col items-center space-y-4 text-center">
-              <h2 className="text-3xl font-bold tracking-tighter sm:text-5xl">
-                Medicare Advantage Benefits
-              </h2>
-              <p className="mx-auto max-w-[700px] text-gray-500 md:text-xl dark:text-gray-400">
-                Maximize reimbursement through transitional care management and reduce rehospitalization rates.
-              </p>
-              <ul className="mt-8 space-y-2 text-left max-w-md">
-                <li className="flex items-center space-x-2">
-                  <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/>
-                  </svg>
-                  <span>Quarterly bonus eligibility</span>
-                </li>
-                <li className="flex items-center space-x-2">
-                  <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/>
-                  </svg>
-                  <span>3x office visit reimbursement rate</span>
-                </li>
-                <li className="flex items-center space-x-2">
-                  <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/>
-                  </svg>
-                  <span>Improved patient outcomes</span>
-                </li>
-              </ul>
+        {/* About Tab Content */}
+        {activeTab === 'about' && (
+          <section className="relative">
+            <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+              <div className="py-16 sm:py-20 lg:py-24">
+                <div className="text-center space-y-8 sm:space-y-12">
+                  {/* About heading */}
+                  <h1 className="text-4xl sm:text-5xl md:text-6xl font-light tracking-wide">
+                    <span className="block text-[var(--primary-color,#0369a1)] font-semibold">Seamless Transitions.</span>
+                    <span className="block text-gray-900 mt-2">Better Outcomes.</span>
+            </h1>
+                  
+                  {/* About content */}
+                  <div className="prose prose-lg sm:prose-xl max-w-none text-gray-600 leading-relaxed space-y-6">
+                    <p className="text-lg sm:text-xl lg:text-2xl font-light">
+                      TOCDOC is a secure, easy-to-use platform designed to streamline communication between hospitals, post-acute facilities, and primary care providers. By keeping physicians informed about their patients' admissions and discharges in real time, TOCDOC helps reduce gaps in care, prevent avoidable readmissions, and improve overall patient outcomes.
+                    </p>
+                    <p className="text-lg sm:text-xl lg:text-2xl font-light">
+                      With TOCDOC, care teams stay connected, patients receive smoother transitions, and providers gain the confidence that no critical information gets lost along the way.
+                    </p>
+                  </div>
+
+                  {/* Call to action */}
+                  <div className="pt-8">
+                    <SignedOut>
+                      <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center items-center">
+                        <Link href="/sign-up" className="w-full sm:w-auto">
+                          <Button 
+                            size="lg" 
+                            className="w-full sm:w-auto min-w-[180px] min-h-[52px] text-lg font-medium"
+                          >
+                            Get Started Today
+                          </Button>
+                        </Link>
+                        <Link href="/sign-in" className="w-full sm:w-auto">
+                          <Button 
+                            variant="outline" 
+                            size="lg" 
+                            className="w-full sm:w-auto min-w-[160px] min-h-[52px] text-lg font-medium"
+                          >
+                            Login
+                          </Button>
+              </Link>
+                      </div>
+                    </SignedOut>
+                    <SignedIn>
+                      <Link href="/auth-redirect" className="inline-block">
+                        <Button 
+                          size="lg" 
+                          className="min-w-[180px] min-h-[52px] text-lg font-medium"
+                        >
+                          Go to Dashboard
+                        </Button>
+              </Link>
+                    </SignedIn>
+                  </div>
+                </div>
+              </div>
             </div>
+          </section>
+        )}
+
+        {/* Support Tab Content */}
+        {activeTab === 'support' && (
+          <section className="relative">
+            <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+              <div className="py-16 sm:py-20 lg:py-24">
+                <div className="text-center space-y-8 sm:space-y-12">
+                  {/* Support heading */}
+                  <h1 className="text-4xl sm:text-5xl md:text-6xl font-light tracking-wide">
+                    <span className="block text-[var(--primary-color,#0369a1)] font-semibold">Support &</span>
+                    <span className="block text-gray-900 mt-2">Contact</span>
+                  </h1>
+                  
+                  {/* Support content */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12 mt-12">
+                    <div className="text-center space-y-4">
+                      <h3 className="text-xl sm:text-2xl font-semibold text-gray-900">Technical Support</h3>
+                      <p className="text-gray-600 leading-relaxed">
+                        Need help with TOCDOC? Our technical support team is here to assist you with any platform questions or issues.
+                      </p>
+                      <div className="pt-4">
+                        <Button 
+                          variant="outline" 
+                          size="lg" 
+                          className="min-w-[180px] min-h-[48px]"
+                          onClick={() => window.open('mailto:support@tocdoc.com?subject=TOCDoc Support Request', '_blank')}
+                        >
+                          Email Support
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="text-center space-y-4">
+                      <h3 className="text-xl sm:text-2xl font-semibold text-gray-900">Sales & Information</h3>
+                      <p className="text-gray-600 leading-relaxed">
+                        Interested in learning more about TOCDOC for your organization? Get in touch with our team.
+                      </p>
+                      <div className="pt-4">
+                        <Button 
+                          size="lg" 
+                          className="min-w-[180px] min-h-[48px]"
+                          onClick={() => window.open('mailto:sales@tocdoc.com?subject=TOCDoc Information Request', '_blank')}
+                        >
+                          Contact Sales
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Contact Information */}
+                  <div className="bg-gray-50 rounded-lg p-6 sm:p-8 mt-12">
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Contact Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-gray-600">
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2">Technical Support</h4>
+                        <p>Email: support@tocdoc.com</p>
+                        <p>Response time: Within 24 hours</p>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2">Sales & Information</h4>
+                        <p>Email: sales@tocdoc.com</p>
+                        <p>Response time: Within 4 hours</p>
+                      </div>
+                    </div>
+                    <div className="mt-6 pt-6 border-t border-gray-200">
+                      <p className="text-sm text-gray-500">
+                        New to TOCDOC? Our onboarding team will help you get set up quickly and ensure your team is ready to improve care transitions from day one.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
           </div>
         </section>
+        )}
       </main>
-      <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          © 2024 TOCdoc. All rights reserved. HIPAA Compliant.
-        </p>
-        <nav className="sm:ml-auto flex gap-4 sm:gap-6">
-          <Link className="text-xs hover:underline underline-offset-4" href="#">
-            Terms of Service
-          </Link>
-          <Link className="text-xs hover:underline underline-offset-4" href="#">
-            Privacy Policy
-          </Link>
-          <Link className="text-xs hover:underline underline-offset-4" href="#">
-            BAA Agreement
-          </Link>
-        </nav>
+      
+      {/* Responsive footer */}
+      <footer className="border-t bg-gray-50/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          <div className="text-center">
+            <p className="text-sm text-gray-600">
+          © 2025 TOCDoc. All rights reserved.
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
   )

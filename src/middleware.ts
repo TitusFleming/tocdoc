@@ -5,16 +5,21 @@ const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
   '/sign-up(.*)',
-  '/onboarding',
   '/api/webhooks(.*)'
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
   const isPublic = isPublicRoute(req);
+  const pathname = req.nextUrl.pathname;
 
   // Allow public routes
   if (isPublic) {
+    // If authenticated user tries to access auth pages, redirect to their dashboard
+    if (userId && (pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up'))) {
+      const authRedirectUrl = new URL('/auth-redirect', req.url);
+      return NextResponse.redirect(authRedirectUrl);
+    }
     return NextResponse.next();
   }
 
@@ -22,12 +27,6 @@ export default clerkMiddleware(async (auth, req) => {
   if (!userId) {
     const signInUrl = new URL('/sign-in', req.url);
     return NextResponse.redirect(signInUrl);
-  }
-
-  // Redirect to dashboard if accessing auth pages while authenticated
-  if (req.nextUrl.pathname.startsWith('/sign-in') || req.nextUrl.pathname.startsWith('/sign-up')) {
-    const dashboardUrl = new URL('/dashboard', req.url);
-    return NextResponse.redirect(dashboardUrl);
   }
 
   return NextResponse.next();
