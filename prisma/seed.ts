@@ -1,37 +1,37 @@
-import { PrismaClient, Role, EventType } from '@prisma/client'
+import { PrismaClient, Role } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function main() {
-  // Delete existing data
+  await prisma.eventImage.deleteMany()
   await prisma.event.deleteMany()
+  await prisma.ccRecipient.deleteMany()
   await prisma.user.deleteMany()
 
-  // Create hardcoded admin user
   const admin = await prisma.user.create({
     data: {
       email: 'admin@tocdoc.com',
+      name: 'Admin',
       role: Role.ADMIN,
     },
   })
 
-  // Create demo doctor for testing
   const doctor = await prisma.user.create({
     data: {
       email: 'doctor@tocdoc.com',
+      name: 'Dr. Demo',
       role: Role.DOCTOR,
     },
   })
 
-  // Create demo events
   await prisma.event.create({
     data: {
       doctorId: doctor.id,
-      type: EventType.ADMISSION,
       patientAlias: 'JD-001',
-      dobMonthYear: '012000',
+      dobMonthYear: '01/2000',
       diagnosis: 'Hypertension',
-      hospitalName: 'Central Hospital',
-      eventDate: new Date(),
+      hospitalName: 'MGH',
+      status: 'ADMITTED',
+      admissionDate: new Date(),
       reviewed: false,
     },
   })
@@ -39,12 +39,14 @@ async function main() {
   await prisma.event.create({
     data: {
       doctorId: doctor.id,
-      type: EventType.DISCHARGE,
       patientAlias: 'JD-002',
-      dobMonthYear: '031995',
+      dobMonthYear: '03/1995',
       diagnosis: 'Post-op Recovery',
-      hospitalName: 'Central Hospital',
-      eventDate: new Date(),
+      hospitalName: 'BWH',
+      status: 'DISCHARGED',
+      admissionDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      dischargeDate: new Date(),
+      dischargeNotes: 'Patient stable. Follow up in 2 weeks.',
       reviewed: true,
     },
   })

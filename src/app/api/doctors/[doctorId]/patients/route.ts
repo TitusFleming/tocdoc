@@ -3,7 +3,6 @@ import { getCurrentUserRole } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { Role } from '@prisma/client'
 
-// GET /api/doctors/[doctorId]/patients - Get admitted patients for a doctor (admin only)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ doctorId: string }> }
@@ -14,29 +13,23 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Only admins can view patients for any doctor
     if (role !== Role.ADMIN) {
-      return NextResponse.json({ error: 'Forbidden - Admin only' }, { status: 403 })
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const { doctorId } = await params
 
-    // Validate doctor exists
     const doctor = await prisma.user.findUnique({
       where: { id: doctorId },
-      select: { id: true, email: true, role: true }
+      select: { id: true, role: true },
     })
 
     if (!doctor || doctor.role !== Role.DOCTOR) {
       return NextResponse.json({ error: 'Invalid doctor ID' }, { status: 400 })
     }
 
-    // Get all admitted patients for this doctor
-    const admittedPatients = await prisma.event.findMany({
-      where: { 
-        doctorId: doctorId,
-        status: 'ADMITTED'
-      },
+    const patients = await prisma.event.findMany({
+      where: { doctorId, status: 'ADMITTED' },
       orderBy: { admissionDate: 'desc' },
       select: {
         id: true,
@@ -45,14 +38,15 @@ export async function GET(
         diagnosis: true,
         hospitalName: true,
         admissionDate: true,
+        admissionTime: true,
         reviewed: true,
-        createdAt: true
-      }
+        createdAt: true,
+      },
     })
 
-    return NextResponse.json({ patients: admittedPatients })
+    return NextResponse.json({ patients })
   } catch (error) {
-    console.error('GET /api/patients/[doctorId] error:', error)
+    console.error('GET /api/doctors/[doctorId]/patients error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

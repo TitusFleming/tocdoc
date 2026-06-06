@@ -3,19 +3,15 @@ import { getCurrentUserRole } from '@/lib/auth'
 
 export async function GET() {
   try {
-    const { role, email } = await getCurrentUserRole()
-    
+    const { role, email, name } = await getCurrentUserRole()
+
     if (!role) {
       return NextResponse.json({ error: 'User role not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ 
-      role,
-      email 
-    })
-
+    return NextResponse.json({ role, email, name })
   } catch (error) {
     console.error('Error fetching user role:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-} 
+}

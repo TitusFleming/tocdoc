@@ -4,7 +4,6 @@ import prisma from '@/lib/prisma'
 import { Role } from '@prisma/client'
 import { sendEventNotification } from '@/lib/email'
 
-// PATCH /api/patients/[patientAlias]/discharge - Discharge a patient
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ patientAlias: string }> }
@@ -17,56 +16,45 @@ export async function PATCH(
 
     const { patientAlias } = await params
     const body = await request.json()
-    const { dischargeDate } = body
+    const { dischargeDate, dischargeTime, dischargeNotes } = body
 
     if (!dischargeDate) {
       return NextResponse.json({ error: 'Discharge date is required' }, { status: 400 })
     }
 
-    // Find the admitted patient
     const admission = await prisma.event.findFirst({
-      where: {
-        patientAlias: patientAlias,
-        status: 'ADMITTED'
-      }
+      where: { patientAlias, status: 'ADMITTED' },
     })
 
     if (!admission) {
       return NextResponse.json({ error: 'No active admission found for this patient' }, { status: 404 })
     }
 
-    // Check permissions: Only assigned doctor or admin can discharge
     if (role !== Role.ADMIN && admission.doctorId !== userId) {
-      return NextResponse.json({ error: 'Forbidden - Only assigned doctor or admin can discharge' }, { status: 403 })
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Validate discharge date is after admission date
     const dischargeDateObj = new Date(dischargeDate)
     if (dischargeDateObj < admission.admissionDate) {
       return NextResponse.json({ error: 'Discharge date cannot be before admission date' }, { status: 400 })
     }
 
-    // Update the admission to discharged status
     const dischargedPatient = await prisma.event.update({
       where: { id: admission.id },
       data: {
         status: 'DISCHARGED',
-        dischargeDate: dischargeDateObj
+        dischargeDate: dischargeDateObj,
+        dischargeTime: dischargeTime || null,
+        dischargeNotes: dischargeNotes || null,
       },
-      include: {
-        doctor: true
-      }
+      include: { doctor: true },
     })
 
-    // Send discharge notification email
-    if (dischargedPatient.doctor.email) {
-      try {
-        await sendEventNotification(dischargedPatient.doctor.email, 'DISCHARGE')
-      } catch (emailError) {
-        console.error('Failed to send discharge notification:', emailError)
-        // Don't fail the discharge if email fails
-      }
-    }
+    await sendEventNotification(
+      dischargedPatient.doctor.email,
+      'DISCHARGE',
+      dischargedPatient.doctorId
+    )
 
     return NextResponse.json({ patient: dischargedPatient })
   } catch (error) {

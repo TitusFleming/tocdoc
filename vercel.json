@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "npx prisma generate && npx prisma migrate deploy && next build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "functions": {
@@ -9,4 +9,4 @@
   },
   "regions": ["iad1"],
   "framework": "nextjs"
-} 
+}

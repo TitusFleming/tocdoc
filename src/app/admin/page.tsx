@@ -8,22 +8,21 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminPage() {
   try {
-    // Server-side role enforcement - throws if not admin
     await requireAdmin()
-  } catch (error) {
-    // Not authorized - redirect to doctor dashboard  
+  } catch {
     redirect('/doctor')
   }
 
-  // Fetch doctors for the form
   const doctors = await prisma.user.findMany({
     where: { role: Role.DOCTOR },
-    select: {
-      id: true,
-      email: true,
-    },
-    orderBy: { email: 'asc' }
+    select: { id: true, email: true, name: true },
+    orderBy: { name: 'asc' },
   })
 
-  return <AdminDashboard doctors={doctors} />
+  const allUsers = await prisma.user.findMany({
+    select: { id: true, email: true, name: true, role: true },
+    orderBy: { name: 'asc' },
+  })
+
+  return <AdminDashboard doctors={doctors} allUsers={allUsers} />
 }

@@ -1,20 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useUser, UserButton } from '@clerk/nextjs'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Shield, UserPlus, Calendar, Hospital, X } from 'lucide-react'
+import { Shield, UserPlus, Calendar, Hospital, X, Mail, Image as ImageIcon, Users, Send } from 'lucide-react'
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Doctor {
   id: string
   email: string
-  firstName?: string
-  lastName?: string
+  name?: string | null
+}
+
+interface UserInfo {
+  id: string
+  email: string
+  name?: string | null
+  role?: string
 }
 
 interface Patient {
@@ -24,15 +30,17 @@ interface Patient {
   diagnosis: string
   hospitalName: string
   admissionDate: string
+  admissionTime?: string
   reviewed: boolean
   createdAt: string
 }
 
 interface AdminDashboardProps {
   doctors: Doctor[]
+  allUsers: UserInfo[]
 }
 
-export function AdminDashboard({ doctors }: AdminDashboardProps) {
+export function AdminDashboard({ doctors, allUsers }: AdminDashboardProps) {
   const { user } = useUser()
   const [message, setMessage] = useState('')
   const [creating, setCreating] = useState(false)
@@ -40,17 +48,29 @@ export function AdminDashboard({ doctors }: AdminDashboardProps) {
   const [admittedPatients, setAdmittedPatients] = useState<Patient[]>([])
   const [loadingPatients, setLoadingPatients] = useState(false)
   const [showNewAdmissionForm, setShowNewAdmissionForm] = useState(false)
+  const [showDischargeForm, setShowDischargeForm] = useState<string | null>(null)
+  const [showCcPanel, setShowCcPanel] = useState(false)
+  const [ccRecipients, setCcRecipients] = useState<UserInfo[]>([])
+  const [showInviteForm, setShowInviteForm] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [pastedImages, setPastedImages] = useState<{ file: File; preview: string }[]>([])
+  const pasteAreaRef = useRef<HTMLTextAreaElement>(null)
 
   const [newEvent, setNewEvent] = useState({
     patientName: '',
     dobMonthYear: '',
-    eventType: '', // 'ADMIT' or 'DISCHARGE'
     hospitalFacility: '',
     eventDate: '',
-    additionalNotes: ''
+    eventTime: '',
+    additionalNotes: '',
   })
 
-  // Common hospital/facility acronyms for dropdown
+  const [dischargeData, setDischargeData] = useState({
+    date: '',
+    time: '',
+    notes: '',
+  })
+
   const hospitalAcronyms = [
     { value: 'MGH', label: 'MGH - Massachusetts General Hospital' },
     { value: 'BWH', label: 'BWH - Brigham and Women\'s Hospital' },
@@ -61,15 +81,16 @@ export function AdminDashboard({ doctors }: AdminDashboardProps) {
     { value: 'YNHH', label: 'YNHH - Yale New Haven Hospital' },
     { value: 'HUP', label: 'HUP - Hospital of the University of Pennsylvania' },
     { value: 'CHOP', label: 'CHOP - Children\'s Hospital of Philadelphia' },
-    { value: 'OTHER', label: 'Other - Specify in notes' }
+    { value: 'OTHER', label: 'Other (type in notes)' },
   ]
 
-  // Load patients when doctor is selected
   useEffect(() => {
     if (selectedDoctorId) {
       loadPatientsForDoctor(selectedDoctorId)
+      loadCcRecipients(selectedDoctorId)
     } else {
       setAdmittedPatients([])
+      setCcRecipients([])
     }
   }, [selectedDoctorId])
 
@@ -81,102 +102,195 @@ export function AdminDashboard({ doctors }: AdminDashboardProps) {
       if (response.ok) {
         setAdmittedPatients(data.patients || [])
       } else {
-        setMessage(`Error loading patients: ${data.error}`)
+        setMessage(`Error: ${data.error}`)
       }
-    } catch (error) {
+    } catch {
       setMessage('Failed to load patients')
-      console.error('Error:', error)
     } finally {
       setLoadingPatients(false)
     }
   }
 
+  const loadCcRecipients = async (doctorId: string) => {
+    try {
+      const response = await fetch(`/api/cc-recipients?doctorId=${doctorId}`)
+      const data = await response.json()
+      if (response.ok) {
+        setCcRecipients(data.ccRecipients || [])
+      }
+    } catch {
+      console.error('Failed to load CC recipients')
+    }
+  }
+
+  const addCcRecipient = async (userId: string) => {
+    try {
+      const response = await fetch('/api/cc-recipients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doctorId: selectedDoctorId, userId }),
+      })
+      if (response.ok) {
+        loadCcRecipients(selectedDoctorId)
+        setMessage('CC recipient added')
+      } else {
+        const data = await response.json()
+        setMessage(`Error: ${data.error}`)
+      }
+    } catch {
+      setMessage('Failed to add CC recipient')
+    }
+  }
+
+  const removeCcRecipient = async (userId: string) => {
+    try {
+      await fetch('/api/cc-recipients', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doctorId: selectedDoctorId, userId }),
+      })
+      loadCcRecipients(selectedDoctorId)
+    } catch {
+      setMessage('Failed to remove CC recipient')
+    }
+  }
+
   const createEvent = async (e: React.FormEvent) => {
     e.preventDefault()
-    
     if (!newEvent.patientName || !newEvent.hospitalFacility || !newEvent.eventDate || !selectedDoctorId) {
-      setMessage('❌ Please fill out all required fields')
+      setMessage('Please fill out all required fields')
       return
     }
 
     try {
       setCreating(true)
-      
-      // Use admissions endpoint for both admit and discharge
-      const endpoint = '/api/admissions'
-      const eventData = {
-        patientAlias: newEvent.patientName,
-        dobMonthYear: newEvent.dobMonthYear,
-        diagnosis: newEvent.additionalNotes || 'New admission',
-        hospitalName: newEvent.hospitalFacility,
-        admissionDate: newEvent.eventDate,
-        doctorId: selectedDoctorId,
-        eventType: 'ADMIT', // Always ADMIT for new admissions
-        notes: newEvent.additionalNotes
-      }
-
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/admissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(eventData)
+        body: JSON.stringify({
+          patientAlias: newEvent.patientName,
+          dobMonthYear: newEvent.dobMonthYear,
+          diagnosis: newEvent.additionalNotes || 'New admission',
+          hospitalName: newEvent.hospitalFacility,
+          admissionDate: newEvent.eventDate,
+          admissionTime: newEvent.eventTime || null,
+          doctorId: selectedDoctorId,
+          eventType: 'ADMIT',
+        }),
       })
-      
+
       const data = await response.json()
       if (response.ok) {
-        setMessage(`✅ Patient admitted and notification sent`)
-        setNewEvent({
-          patientName: '',
-          dobMonthYear: '',
-          eventType: 'ADMIT',
-          hospitalFacility: '',
-          eventDate: '',
-          additionalNotes: ''
-        })
+        setMessage('Patient admitted and notification sent')
+        setNewEvent({ patientName: '', dobMonthYear: '', hospitalFacility: '', eventDate: '', eventTime: '', additionalNotes: '' })
         setShowNewAdmissionForm(false)
-        // Reload the patient list
         loadPatientsForDoctor(selectedDoctorId)
       } else {
-        setMessage(`❌ Error: ${data.error}`)
+        setMessage(`Error: ${data.error}`)
       }
-    } catch (error) {
-      setMessage(`❌ Failed to create admission`)
-      console.error('Error:', error)
+    } catch {
+      setMessage('Failed to create admission')
     } finally {
       setCreating(false)
     }
   }
 
   const dischargePatient = async (patientAlias: string) => {
+    if (!dischargeData.date) {
+      setMessage('Please enter a discharge date')
+      return
+    }
+
     try {
-      const dischargeDate = new Date().toISOString()
-      const response = await fetch(`/api/patients/${patientAlias}/discharge`, {
+      const response = await fetch(`/api/patients/${encodeURIComponent(patientAlias)}/discharge`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dischargeDate })
+        body: JSON.stringify({
+          dischargeDate: dischargeData.date,
+          dischargeTime: dischargeData.time || null,
+          dischargeNotes: dischargeData.notes || null,
+        }),
       })
-      
+
       const data = await response.json()
       if (response.ok) {
-        setMessage(`✅ Patient ${patientAlias} discharged at ${new Date().toLocaleString()}`)
-        // Reload the patient list
+        // Upload any pasted images
+        if (pastedImages.length > 0 && data.patient?.id) {
+          for (const img of pastedImages) {
+            const formData = new FormData()
+            formData.append('file', img.file)
+            formData.append('eventId', data.patient.id)
+            await fetch('/api/upload', { method: 'POST', body: formData })
+          }
+        }
+        setMessage(`Patient ${patientAlias} discharged successfully`)
+        setShowDischargeForm(null)
+        setDischargeData({ date: '', time: '', notes: '' })
+        setPastedImages([])
         loadPatientsForDoctor(selectedDoctorId)
       } else {
-        setMessage(`❌ Error discharging patient: ${data.error}`)
+        setMessage(`Error: ${data.error}`)
       }
-    } catch (error) {
-      setMessage('❌ Failed to discharge patient')
-      console.error('Error:', error)
+    } catch {
+      setMessage('Failed to discharge patient')
     }
   }
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault()
+        const file = items[i].getAsFile()
+        if (file) {
+          const preview = URL.createObjectURL(file)
+          setPastedImages(prev => [...prev, { file, preview }])
+        }
+        break
+      }
+    }
+  }
+
+  const removeImage = (index: number) => {
+    setPastedImages(prev => {
+      const newImages = [...prev]
+      URL.revokeObjectURL(newImages[index].preview)
+      newImages.splice(index, 1)
+      return newImages
+    })
+  }
+
+  const sendInvite = async () => {
+    if (!inviteEmail) return
+    try {
+      const response = await fetch('/api/admin/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailAddress: inviteEmail }),
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setMessage(`Invitation sent to ${inviteEmail}`)
+        setInviteEmail('')
+        setShowInviteForm(false)
+      } else {
+        setMessage(`Error: ${data.error}`)
+      }
+    } catch {
+      setMessage('Failed to send invitation')
+    }
+  }
+
+  const displayName = (u: { name?: string | null; email: string }) =>
+    u.name || u.email
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Responsive header */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto max-w-7xl flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">
-            <a href="/" className="text-xl sm:text-2xl font-bold text-[var(--primary-color,#0369a1)] hover:opacity-80 transition-opacity">TOCdoctor.com</a>
-            <span className="hidden sm:inline text-sm text-gray-500">• Admin</span>
+            <a href="/" className="text-xl sm:text-2xl font-bold text-[#0369a1] hover:opacity-80 transition-opacity">TOCdoctor.com</a>
+            <span className="hidden sm:inline text-sm text-gray-500">Admin</span>
           </div>
           <div className="flex items-center gap-4">
             <div className="text-xs sm:text-sm text-gray-500">
@@ -187,7 +301,6 @@ export function AdminDashboard({ doctors }: AdminDashboardProps) {
         </div>
       </header>
 
-      {/* Main content with responsive container */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -195,40 +308,72 @@ export function AdminDashboard({ doctors }: AdminDashboardProps) {
               <Shield className="h-6 w-6 sm:h-7 sm:w-7 mr-2 text-blue-600" />
               Admin Dashboard
             </h1>
-            <p className="mt-1 text-sm sm:text-base text-gray-600">Create new admission or discharge events</p>
+            <p className="mt-1 text-sm text-gray-600">Manage admissions, discharges, and notifications</p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowInviteForm(!showInviteForm)}
+          >
+            <Send className="h-4 w-4 mr-2" />
+            Invite User
+          </Button>
         </div>
 
         {message && (
-          <Alert className="mt-6">
+          <Alert className="mt-4">
             <AlertDescription>{message}</AlertDescription>
           </Alert>
         )}
 
+        {/* Invite User Form */}
+        {showInviteForm && (
+          <Card className="mt-4 border-green-200 bg-green-50/30">
+            <CardContent className="p-4">
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Label className="text-sm">Email to invite</Label>
+                  <Input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    placeholder="doctor@hospital.com"
+                    className="mt-1"
+                  />
+                </div>
+                <Button onClick={sendInvite} disabled={!inviteEmail}>
+                  <Mail className="h-4 w-4 mr-2" />
+                  Send Invite
+                </Button>
+                <Button variant="ghost" onClick={() => setShowInviteForm(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Doctor Selection */}
-        <Card className="mt-6 sm:mt-8">
+        <Card className="mt-6">
           <CardHeader>
-            <CardTitle className="flex items-center text-lg sm:text-xl">
-              <Shield className="h-5 w-5 sm:h-6 sm:w-6 mr-2" />
+            <CardTitle className="flex items-center text-lg">
+              <Shield className="h-5 w-5 mr-2" />
               Patient Management
             </CardTitle>
-            <CardDescription className="text-sm sm:text-base">Select a doctor to view and manage their patients</CardDescription>
+            <CardDescription>Select a doctor to view and manage their patients</CardDescription>
           </CardHeader>
           <CardContent className="p-4 sm:p-6">
             <div className="space-y-4">
               <div>
-                <Label htmlFor="doctor" className="text-sm font-medium">Select Doctor *</Label>
+                <Label className="text-sm font-medium">Select Doctor *</Label>
                 <Select value={selectedDoctorId} onValueChange={setSelectedDoctorId}>
                   <SelectTrigger className="min-h-[44px]">
-                    <SelectValue placeholder="Choose a doctor to manage patients" />
+                    <SelectValue placeholder="Choose a doctor" />
                   </SelectTrigger>
                   <SelectContent>
                     {doctors.map(doctor => (
                       <SelectItem key={doctor.id} value={doctor.id}>
-                        {doctor.firstName && doctor.lastName 
-                          ? `${doctor.firstName} ${doctor.lastName}`
-                          : doctor.email
-                        }
+                        {displayName(doctor)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -238,123 +383,210 @@ export function AdminDashboard({ doctors }: AdminDashboardProps) {
           </CardContent>
         </Card>
 
-        {/* Patient List for Selected Doctor */}
+        {/* CC Recipients Panel */}
         {selectedDoctorId && (
-          <Card className="mt-6 sm:mt-8">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-lg sm:text-xl">
+          <Card className="mt-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between text-base">
                 <div className="flex items-center">
-                  <Hospital className="h-5 w-5 sm:h-6 sm:w-6 mr-2" />
-                  Current Admissions
+                  <Users className="h-4 w-4 mr-2" />
+                  CC Notification Recipients
                 </div>
-                <Button 
-                  onClick={() => setShowNewAdmissionForm(!showNewAdmissionForm)}
+                <Button
+                  variant="ghost"
                   size="sm"
-                  className="min-h-[36px]"
-                  variant={showNewAdmissionForm ? "outline" : "default"}
+                  onClick={() => setShowCcPanel(!showCcPanel)}
                 >
-                  {showNewAdmissionForm ? (
-                    <>
-                      <X className="h-4 w-4 mr-2" />
-                      Cancel
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      New Event
-                    </>
-                  )}
+                  {showCcPanel ? 'Hide' : 'Manage'}
                 </Button>
               </CardTitle>
-              <CardDescription className="text-sm sm:text-base">
-                Patients currently admitted under {(() => {
-                  const doctor = doctors.find(d => d.id === selectedDoctorId);
-                  return doctor?.firstName && doctor?.lastName 
-                    ? `Dr. ${doctor.firstName} ${doctor.lastName}`
-                    : doctor?.email;
-                })()}
+              <CardDescription className="text-xs">
+                These users will also receive admission/discharge notifications for this doctor
               </CardDescription>
+            </CardHeader>
+            {showCcPanel && (
+              <CardContent className="p-4 pt-0">
+                {ccRecipients.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {ccRecipients.map(cc => (
+                      <span key={cc.id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                        {displayName(cc)}
+                        <button onClick={() => removeCcRecipient(cc.id)} className="hover:text-red-600">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div>
+                  <Label className="text-xs">Add user to CC list</Label>
+                  <Select onValueChange={addCcRecipient}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select a user to CC" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allUsers
+                        .filter(u => u.id !== selectedDoctorId && !ccRecipients.find(cc => cc.id === u.id))
+                        .map(u => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {displayName(u)} ({u.email})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        )}
+
+        {/* Patient List */}
+        {selectedDoctorId && (
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between text-lg">
+                <div className="flex items-center">
+                  <Hospital className="h-5 w-5 mr-2" />
+                  Current Admissions
+                </div>
+                <Button
+                  onClick={() => setShowNewAdmissionForm(!showNewAdmissionForm)}
+                  size="sm"
+                  variant={showNewAdmissionForm ? "outline" : "default"}
+                >
+                  {showNewAdmissionForm ? <><X className="h-4 w-4 mr-2" />Cancel</> : <><UserPlus className="h-4 w-4 mr-2" />New Admission</>}
+                </Button>
+              </CardTitle>
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               {loadingPatients ? (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-2 text-sm text-gray-600">Loading patients...</p>
                 </div>
               ) : admittedPatients.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <Hospital className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-sm sm:text-base">No patients currently admitted</p>
-                  <p className="text-xs text-gray-400 mt-2">Click "New Event" to create an admission or discharge event</p>
+                  <p>No patients currently admitted</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {admittedPatients.map((patient) => (
-                    <div key={patient.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors bg-white">
-                      {/* Standardized Provider View */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
-                        {/* Name */}
+                    <div key={patient.id} className="border rounded-lg p-4 bg-white">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-3">
                         <div className="border rounded p-3 bg-gray-50">
-                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</div>
+                          <div className="text-xs font-semibold text-gray-500 uppercase">Name</div>
                           <div className="font-semibold text-lg mt-1">{patient.patientAlias}</div>
                         </div>
-                        
-                        {/* DOB */}
                         <div className="border rounded p-3 bg-gray-50">
-                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">DOB</div>
+                          <div className="text-xs font-semibold text-gray-500 uppercase">DOB</div>
                           <div className="font-medium mt-1">{patient.dobMonthYear || 'N/A'}</div>
                         </div>
-                        
-                        {/* Status */}
                         <div className="border rounded p-3 bg-gray-50">
-                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</div>
+                          <div className="text-xs font-semibold text-gray-500 uppercase">Status</div>
                           <div className="font-medium mt-1 text-green-600">ADMITTED</div>
                         </div>
-                        
-                        {/* Hospital */}
                         <div className="border rounded p-3 bg-gray-50">
-                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Hospital</div>
+                          <div className="text-xs font-semibold text-gray-500 uppercase">Hospital</div>
                           <div className="font-medium mt-1 text-sm">{patient.hospitalName}</div>
                         </div>
-                        
-                        {/* Date */}
                         <div className="border rounded p-3 bg-gray-50">
-                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</div>
-                          <div className="font-medium mt-1 text-sm">{new Date(patient.admissionDate).toLocaleDateString()}</div>
+                          <div className="text-xs font-semibold text-gray-500 uppercase">Date</div>
+                          <div className="font-medium mt-1 text-sm">
+                            {new Date(patient.admissionDate).toLocaleDateString()}
+                            {patient.admissionTime && <span className="text-gray-500 ml-1">{patient.admissionTime}</span>}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Additional Notes/Diagnosis */}
-                      <div className="border rounded p-3 bg-gray-50 mb-4">
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</div>
+                      <div className="border rounded p-3 bg-gray-50 mb-3">
+                        <div className="text-xs font-semibold text-gray-500 uppercase">Diagnosis</div>
                         <div className="text-sm mt-1">{patient.diagnosis}</div>
                       </div>
 
-                      {/* Actions and Status */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          {patient.reviewed && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              Reviewed
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
+                      <div className="flex justify-end gap-2">
+                        {showDischargeForm === patient.patientAlias ? (
+                          <Button variant="ghost" size="sm" onClick={() => { setShowDischargeForm(null); setPastedImages([]) }}>
+                            <X className="h-4 w-4 mr-1" /> Cancel
+                          </Button>
+                        ) : (
                           <Button
                             variant="destructive"
                             size="sm"
                             onClick={() => {
-                              if (confirm(`Are you sure you want to discharge ${patient.patientAlias}?`)) {
-                                dischargePatient(patient.patientAlias)
-                              }
+                              setShowDischargeForm(patient.patientAlias)
+                              setDischargeData({ date: new Date().toISOString().split('T')[0], time: '', notes: '' })
                             }}
-                            className="min-h-[36px]"
                           >
                             <Calendar className="h-4 w-4 mr-2" />
                             Discharge
                           </Button>
-                        </div>
+                        )}
                       </div>
+
+                      {/* Discharge Form (inline) */}
+                      {showDischargeForm === patient.patientAlias && (
+                        <div className="mt-4 border-t pt-4 space-y-4">
+                          <h4 className="font-semibold text-sm text-red-700">Discharge {patient.patientAlias}</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <Label className="text-xs">Discharge Date *</Label>
+                              <Input
+                                type="date"
+                                value={dischargeData.date}
+                                onChange={e => setDischargeData(prev => ({ ...prev, date: e.target.value }))}
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Discharge Time (optional)</Label>
+                              <Input
+                                type="time"
+                                value={dischargeData.time}
+                                onChange={e => setDischargeData(prev => ({ ...prev, time: e.target.value }))}
+                                className="mt-1"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-xs">Discharge Notes (paste screenshots here)</Label>
+                            <textarea
+                              ref={pasteAreaRef}
+                              value={dischargeData.notes}
+                              onChange={e => setDischargeData(prev => ({ ...prev, notes: e.target.value }))}
+                              onPaste={handlePaste}
+                              placeholder="Enter discharge notes... You can paste screenshots (Cmd+V) directly here."
+                              rows={4}
+                              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                            />
+                          </div>
+                          {pastedImages.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {pastedImages.map((img, idx) => (
+                                <div key={idx} className="relative group">
+                                  <img src={img.preview} alt={`Pasted ${idx + 1}`} className="h-20 w-20 object-cover rounded border" />
+                                  <button
+                                    onClick={() => removeImage(idx)}
+                                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <ImageIcon className="h-3 w-3" />
+                            Supports pasted screenshots (JPG, PNG, GIF, WebP)
+                          </div>
+                          <Button
+                            onClick={() => dischargePatient(patient.patientAlias)}
+                            variant="destructive"
+                            className="w-full"
+                          >
+                            Confirm Discharge
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -363,120 +595,89 @@ export function AdminDashboard({ doctors }: AdminDashboardProps) {
           </Card>
         )}
 
-        {/* New Admission Form - Now appears right after the admissions card */}
+        {/* New Admission Form */}
         {showNewAdmissionForm && selectedDoctorId && (
-          <Card className="mt-4 sm:mt-6 border-blue-200 bg-blue-50/30 transition-all duration-300 ease-in-out">
+          <Card className="mt-4 border-blue-200 bg-blue-50/30">
             <CardHeader>
-              <CardTitle className="flex items-center text-lg sm:text-xl">
-                <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 mr-2" />
+              <CardTitle className="flex items-center text-lg">
+                <UserPlus className="h-5 w-5 mr-2" />
                 New Admission
               </CardTitle>
-              <CardDescription className="text-sm sm:text-base">
-                Create new patient admission for {(() => {
-                  const doctor = doctors.find(d => d.id === selectedDoctorId);
-                  return doctor?.firstName && doctor?.lastName 
-                    ? `Dr. ${doctor.firstName} ${doctor.lastName}`
-                    : doctor?.email;
-                })()}
+              <CardDescription>
+                Create new patient admission for {displayName(doctors.find(d => d.id === selectedDoctorId) || { email: '' })}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               <form onSubmit={createEvent} className="space-y-6">
-                {/* Standardized 5-Element Boxes for Providers */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                  {/* 1. Name/ID */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="border rounded-lg p-4 bg-white shadow-sm">
-                    <Label htmlFor="patientName" className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Name/ID *</Label>
-                    <Input 
-                      id="patientName" 
-                      value={newEvent.patientName} 
-                      onChange={(e) => setNewEvent({ ...newEvent, patientName: e.target.value })} 
-                      placeholder="Patient ID" 
-                      required 
-                      className="mt-2 min-h-[44px] font-medium"
+                    <Label className="text-xs font-semibold text-gray-700 uppercase">Patient Name/ID *</Label>
+                    <Input
+                      value={newEvent.patientName}
+                      onChange={e => setNewEvent({ ...newEvent, patientName: e.target.value })}
+                      placeholder="Patient identifier"
+                      required
+                      className="mt-2"
                     />
                   </div>
-
-                  {/* 2. DOB MM/YYYY */}
                   <div className="border rounded-lg p-4 bg-white shadow-sm">
-                    <Label htmlFor="dobMonthYear" className="text-sm font-semibold text-gray-700 uppercase tracking-wide">DOB</Label>
-                    <Input 
-                      id="dobMonthYear" 
-                      placeholder="MM/YYYY" 
-                      value={newEvent.dobMonthYear} 
-                      onChange={(e) => setNewEvent({ ...newEvent, dobMonthYear: e.target.value })} 
+                    <Label className="text-xs font-semibold text-gray-700 uppercase">DOB (optional)</Label>
+                    <Input
+                      placeholder="MM/YYYY"
+                      value={newEvent.dobMonthYear}
+                      onChange={e => setNewEvent({ ...newEvent, dobMonthYear: e.target.value })}
                       maxLength={7}
-                      className="mt-2 min-h-[44px] font-medium"
+                      className="mt-2"
                     />
                   </div>
-
-                  {/* 3. ADMIT (admission only) */}
                   <div className="border rounded-lg p-4 bg-white shadow-sm">
-                    <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Status</Label>
-                    <div className="mt-2 min-h-[44px] flex items-center bg-green-50 border border-green-200 rounded-md px-3 font-medium text-green-800">
-                      ADMIT
-                    </div>
-                  </div>
-
-                  {/* 4. Facility */}
-                  <div className="border rounded-lg p-4 bg-white shadow-sm">
-                    <Label htmlFor="hospitalFacility" className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Facility *</Label>
-                    <Select value={newEvent.hospitalFacility} onValueChange={(value) => setNewEvent({ ...newEvent, hospitalFacility: value })}>
-                      <SelectTrigger className="mt-2 min-h-[44px] font-medium">
-                        <SelectValue placeholder="Select" />
+                    <Label className="text-xs font-semibold text-gray-700 uppercase">Hospital/Facility *</Label>
+                    <Select value={newEvent.hospitalFacility} onValueChange={v => setNewEvent({ ...newEvent, hospitalFacility: v })}>
+                      <SelectTrigger className="mt-2">
+                        <SelectValue placeholder="Select facility" />
                       </SelectTrigger>
                       <SelectContent>
-                        {hospitalAcronyms.map((hospital) => (
-                          <SelectItem key={hospital.value} value={hospital.value}>
-                            {hospital.label}
-                          </SelectItem>
+                        {hospitalAcronyms.map(h => (
+                          <SelectItem key={h.value} value={h.value}>{h.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-
-                  {/* 5. Date */}
                   <div className="border rounded-lg p-4 bg-white shadow-sm">
-                    <Label htmlFor="eventDate" className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Date *</Label>
-                    <Input 
-                      id="eventDate" 
-                      type="datetime-local" 
-                      value={newEvent.eventDate} 
-                      onChange={(e) => setNewEvent({ ...newEvent, eventDate: e.target.value })} 
-                      required 
-                      className="mt-2 min-h-[44px] font-medium"
+                    <Label className="text-xs font-semibold text-gray-700 uppercase">Admission Date *</Label>
+                    <Input
+                      type="date"
+                      value={newEvent.eventDate}
+                      onChange={e => setNewEvent({ ...newEvent, eventDate: e.target.value })}
+                      required
+                      className="mt-2"
+                    />
+                  </div>
+                  <div className="border rounded-lg p-4 bg-white shadow-sm">
+                    <Label className="text-xs font-semibold text-gray-700 uppercase">Time (optional)</Label>
+                    <Input
+                      type="time"
+                      value={newEvent.eventTime}
+                      onChange={e => setNewEvent({ ...newEvent, eventTime: e.target.value })}
+                      className="mt-2"
                     />
                   </div>
                 </div>
-
-                {/* Diagnosis - Free Text Box */}
                 <div className="border rounded-lg p-4 bg-white shadow-sm">
-                  <Label htmlFor="additionalNotes" className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Diagnosis & Notes</Label>
-                  <textarea 
-                    id="additionalNotes" 
-                    value={newEvent.additionalNotes} 
-                    onChange={(e) => setNewEvent({ ...newEvent, additionalNotes: e.target.value })}
-                    placeholder="Enter diagnosis, additional information, or special instructions..."
+                  <Label className="text-xs font-semibold text-gray-700 uppercase">Diagnosis & Notes</Label>
+                  <textarea
+                    value={newEvent.additionalNotes}
+                    onChange={e => setNewEvent({ ...newEvent, additionalNotes: e.target.value })}
+                    placeholder="Enter diagnosis, additional information..."
                     rows={3}
-                    className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                    className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
                   />
                 </div>
-
-                <div className="flex gap-4 pt-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => setShowNewAdmissionForm(false)}
-                    className="min-h-[48px] text-base flex-1"
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Cancel
+                <div className="flex gap-4">
+                  <Button type="button" variant="outline" onClick={() => setShowNewAdmissionForm(false)} className="flex-1">
+                    <X className="h-4 w-4 mr-2" /> Cancel
                   </Button>
-                  <Button 
-                    type="submit" 
-                    className="min-h-[48px] text-base flex-1" 
-                    disabled={creating}
-                  >
+                  <Button type="submit" className="flex-1" disabled={creating}>
                     <UserPlus className="h-4 w-4 mr-2" />
                     {creating ? 'Creating...' : 'Admit Patient'}
                   </Button>

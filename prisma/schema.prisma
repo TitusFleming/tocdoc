@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,32 +10,59 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
+  name      String?
   role      Role
   createdAt DateTime @default(now())
-  events    Event[]  @relation("UserEvents")
+
+  events       Event[]       @relation("DoctorEvents")
+  ccForDoctors CcRecipient[] @relation("CcUser")
+  ccRecipients CcRecipient[] @relation("DoctorCcList")
+}
+
+model CcRecipient {
+  id       String @id @default(cuid())
+  doctorId String
+  userId   String
+
+  doctor User @relation("DoctorCcList", fields: [doctorId], references: [id], onDelete: Cascade)
+  user   User @relation("CcUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, userId])
 }
 
 model Event {
-  id            String      @id @default(cuid())
-  doctorId      String
-  patientAlias  String
-  dobMonthYear  String?     // MMYYYY format (optional)
-  diagnosis     String
-  hospitalName  String
-  
-  // Patient-centric workflow fields
-  status        EventStatus @default(ADMITTED)
-  admissionDate DateTime
-  dischargeDate DateTime?
-  
-  // Existing fields
-  reviewed      Boolean     @default(false)
-  createdAt     DateTime    @default(now())
-  doctor        User        @relation("UserEvents", fields: [doctorId], references: [id])
+  id             String      @id @default(cuid())
+  doctorId       String
+  patientAlias   String
+  dobMonthYear   String?
+  diagnosis      String
+  hospitalName   String
+  status         EventStatus @default(ADMITTED)
+  admissionDate  DateTime
+  admissionTime  String?
+  dischargeDate  DateTime?
+  dischargeTime  String?
+  dischargeNotes String?
+  reviewed       Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+
+  doctor User         @relation("DoctorEvents", fields: [doctorId], references: [id])
+  images EventImage[]
 
   @@index([doctorId])
   @@index([patientAlias, status])
   @@index([status])
+}
+
+model EventImage {
+  id        String   @id @default(cuid())
+  eventId   String
+  url       String
+  filename  String?
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 }
 
 enum Role {
