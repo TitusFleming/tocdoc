@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUserRole } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { Role } from '@prisma/client'
+import { ccRecipientSchema } from '@/lib/validation'
 
 // GET /api/cc-recipients?doctorId=xxx — get CC list for a doctor
 export async function GET(request: NextRequest) {
@@ -36,10 +37,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { doctorId, userId } = await request.json()
-    if (!doctorId || !userId) {
+    const parsed = ccRecipientSchema.safeParse(await request.json())
+    if (!parsed.success) {
       return NextResponse.json({ error: 'doctorId and userId are required' }, { status: 400 })
     }
+    const { doctorId, userId } = parsed.data
 
     const cc = await prisma.ccRecipient.create({
       data: { doctorId, userId },
@@ -64,10 +66,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { doctorId, userId } = await request.json()
-    if (!doctorId || !userId) {
+    const parsed = ccRecipientSchema.safeParse(await request.json())
+    if (!parsed.success) {
       return NextResponse.json({ error: 'doctorId and userId are required' }, { status: 400 })
     }
+    const { doctorId, userId } = parsed.data
 
     await prisma.ccRecipient.delete({
       where: { doctorId_userId: { doctorId, userId } },

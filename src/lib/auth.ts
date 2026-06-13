@@ -2,9 +2,10 @@ import { currentUser } from '@clerk/nextjs/server'
 import prisma from '@/lib/prisma'
 import { Role } from '@prisma/client'
 
+// Fail closed: if ADMIN_EMAILS is not configured, nobody is an admin.
 export function isAdminEmail(email: string | null | undefined): boolean {
   if (!email) return false
-  const adminEmails = (process.env.ADMIN_EMAILS || 'admin@tocdoc.com')
+  const adminEmails = (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map(e => e.trim().toLowerCase())
     .filter(Boolean)
@@ -30,20 +31,38 @@ export async function getCurrentUserRole(): Promise<{
       return { user: clerkUser, role: null, email: null, userId: null, name: null }
     }
 
-    const isAdmin = isAdminEmail(email)
-    const role = isAdmin ? Role.ADMIN : Role.DOCTOR
-
     const clerkName = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') || null
 
-    const user = await prisma.user.upsert({
-      where: { email },
-      update: { role, ...(clerkName && { name: clerkName }) },
-      create: { email, role, name: clerkName },
-    })
+    let user = await prisma.user.findUnique({ where: { email } })
+
+    // Only admins listed in ADMIN_EMAILS may bootstrap their own account.
+    // Doctors must be provisioned through the admin invite flow.
+    if (!user && isAdminEmail(email)) {
+      user = await prisma.user.create({
+        data: { email, role: Role.ADMIN, name: clerkName },
+      })
+    }
+
+    if (!user) {
+      return { user: clerkUser, role: null, email, userId: null, name: clerkName }
+    }
+
+    // Keep name in sync with Clerk; promote to admin if added to ADMIN_EMAILS.
+    const shouldPromote = isAdminEmail(email) && user.role !== Role.ADMIN
+    const shouldSyncName = clerkName && user.name !== clerkName
+    if (shouldPromote || shouldSyncName) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          ...(shouldPromote && { role: Role.ADMIN }),
+          ...(shouldSyncName && { name: clerkName }),
+        },
+      })
+    }
 
     return {
       user: clerkUser,
-      role,
+      role: user.role,
       email,
       userId: user.id,
       name: user.name,
@@ -52,26 +71,4 @@ export async function getCurrentUserRole(): Promise<{
     console.error('Error getting current user role:', error)
     return { user: null, role: null, email: null, userId: null, name: null }
   }
-}
-
-export async function requireRole(requiredRole: Role) {
-  const { role, email, userId, name } = await getCurrentUserRole()
-
-  if (!role || !email || !userId) {
-    throw new Error('User not found or not authenticated')
-  }
-
-  if (role !== requiredRole) {
-    throw new Error(`Access denied. Required role: ${requiredRole}, current role: ${role}`)
-  }
-
-  return { role, email, userId, name }
-}
-
-export async function requireAdmin() {
-  return await requireRole(Role.ADMIN)
-}
-
-export async function requireDoctor() {
-  return await requireRole(Role.DOCTOR)
 }

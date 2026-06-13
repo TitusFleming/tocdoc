@@ -3,32 +3,6 @@ import { getCurrentUserRole } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { Role } from '@prisma/client'
 
-async function deleteOldEvents() {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-  try {
-    const dischargedCount = await prisma.event.deleteMany({
-      where: {
-        status: 'DISCHARGED',
-        dischargeDate: { lt: thirtyDaysAgo },
-      },
-    })
-
-    const admittedCount = await prisma.event.deleteMany({
-      where: {
-        status: 'ADMITTED',
-        createdAt: { lt: thirtyDaysAgo },
-      },
-    })
-
-    const total = dischargedCount.count + admittedCount.count
-    if (total > 0) {
-      console.log(`Deleted ${total} events older than 30 days`)
-    }
-  } catch (error) {
-    console.error('Error deleting old events:', error)
-  }
-}
-
 export async function GET(request: NextRequest) {
   try {
     const { role, userId } = await getCurrentUserRole()
@@ -53,12 +27,10 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: { admissionDate: 'desc' },
       include: {
-        images: { select: { id: true, url: true, filename: true } },
+        images: { select: { id: true, filename: true } },
         doctor: { select: { name: true, email: true } },
       },
     })
-
-    await deleteOldEvents()
 
     return NextResponse.json({ events })
   } catch (error) {

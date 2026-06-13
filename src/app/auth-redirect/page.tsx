@@ -1,35 +1,20 @@
 import { redirect } from 'next/navigation'
-import { currentUser } from '@clerk/nextjs/server'
+import { getCurrentUserRole } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
-// Check if email is admin (inline function to avoid server/client boundary issues)
-function isAdminEmail(email: string | null | undefined): boolean {
-  if (!email) return false
-  const adminEmails = (process.env.ADMIN_EMAILS || 'admin@tocdoc.com')
-    .split(',')
-    .map(e => e.trim().toLowerCase())
-    .filter(Boolean)
-  return adminEmails.includes(email.toLowerCase())
-}
-
 export default async function AuthRedirect() {
-  const clerkUser = await currentUser()
-  
-  if (!clerkUser) {
-    redirect('/sign-in')
-  }
-  
-  const email = clerkUser.emailAddresses[0]?.emailAddress
-  if (!email) {
+  const { user, role } = await getCurrentUserRole()
+
+  if (!user) {
     redirect('/sign-in')
   }
 
-  const isAdmin = isAdminEmail(email)
-  
-  if (isAdmin) {
+  if (role === 'ADMIN') {
     redirect('/admin')
-  } else {
+  } else if (role === 'DOCTOR') {
     redirect('/doctor')
+  } else {
+    redirect('/pending')
   }
 }

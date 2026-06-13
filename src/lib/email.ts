@@ -3,8 +3,6 @@
 import { Resend } from 'resend'
 import prisma from '@/lib/prisma'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 type EventType = 'ADMISSION' | 'DISCHARGE'
 
 export async function sendEventNotification(
@@ -16,6 +14,9 @@ export async function sendEventNotification(
     console.warn('RESEND_API_KEY not set — skipping email notification')
     return
   }
+
+  // Instantiated lazily: the constructor throws without a key at build time.
+  const resend = new Resend(process.env.RESEND_API_KEY)
 
   const isAdmission = type === 'ADMISSION'
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://tocdoctor.com'
@@ -65,7 +66,8 @@ export async function sendEventNotification(
       subject,
       html,
     })
-    console.log(`Email sent (${type}) to ${recipients.join(', ')}:`, result)
+    // Do not log recipient addresses (PII); the message id is enough to trace.
+    console.log(`Email sent (${type}), id: ${result.data?.id ?? 'unknown'}`)
   } catch (error) {
     console.error('Failed to send email notification:', error)
   }

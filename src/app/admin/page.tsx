@@ -1,16 +1,19 @@
 import { redirect } from 'next/navigation'
 import { Role } from '@prisma/client'
 import prisma from '@/lib/prisma'
-import { requireAdmin } from '@/lib/auth'
+import { getCurrentUserRole } from '@/lib/auth'
 import { AdminDashboard } from './admin-dashboard'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPage() {
-  try {
-    await requireAdmin()
-  } catch {
-    redirect('/doctor')
+  const { user, role } = await getCurrentUserRole()
+
+  if (!user) {
+    redirect('/sign-in')
+  }
+  if (role !== Role.ADMIN) {
+    redirect(role === Role.DOCTOR ? '/doctor' : '/pending')
   }
 
   const doctors = await prisma.user.findMany({

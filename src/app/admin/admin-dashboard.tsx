@@ -195,14 +195,14 @@ export function AdminDashboard({ doctors, allUsers }: AdminDashboardProps) {
     }
   }
 
-  const dischargePatient = async (patientAlias: string) => {
+  const dischargePatient = async (patient: Patient) => {
     if (!dischargeData.date) {
       setMessage('Please enter a discharge date')
       return
     }
 
     try {
-      const response = await fetch(`/api/patients/${encodeURIComponent(patientAlias)}/discharge`, {
+      const response = await fetch(`/api/events/${patient.id}/discharge`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -215,15 +215,15 @@ export function AdminDashboard({ doctors, allUsers }: AdminDashboardProps) {
       const data = await response.json()
       if (response.ok) {
         // Upload any pasted images
-        if (pastedImages.length > 0 && data.patient?.id) {
+        if (pastedImages.length > 0) {
           for (const img of pastedImages) {
             const formData = new FormData()
             formData.append('file', img.file)
-            formData.append('eventId', data.patient.id)
+            formData.append('eventId', patient.id)
             await fetch('/api/upload', { method: 'POST', body: formData })
           }
         }
-        setMessage(`Patient ${patientAlias} discharged successfully`)
+        setMessage(`Patient ${patient.patientAlias} discharged successfully`)
         setShowDischargeForm(null)
         setDischargeData({ date: '', time: '', notes: '' })
         setPastedImages([])
@@ -504,7 +504,7 @@ export function AdminDashboard({ doctors, allUsers }: AdminDashboardProps) {
                       </div>
 
                       <div className="flex justify-end gap-2">
-                        {showDischargeForm === patient.patientAlias ? (
+                        {showDischargeForm === patient.id ? (
                           <Button variant="ghost" size="sm" onClick={() => { setShowDischargeForm(null); setPastedImages([]) }}>
                             <X className="h-4 w-4 mr-1" /> Cancel
                           </Button>
@@ -513,7 +513,7 @@ export function AdminDashboard({ doctors, allUsers }: AdminDashboardProps) {
                             variant="destructive"
                             size="sm"
                             onClick={() => {
-                              setShowDischargeForm(patient.patientAlias)
+                              setShowDischargeForm(patient.id)
                               setDischargeData({ date: new Date().toISOString().split('T')[0], time: '', notes: '' })
                             }}
                           >
@@ -524,7 +524,7 @@ export function AdminDashboard({ doctors, allUsers }: AdminDashboardProps) {
                       </div>
 
                       {/* Discharge Form (inline) */}
-                      {showDischargeForm === patient.patientAlias && (
+                      {showDischargeForm === patient.id && (
                         <div className="mt-4 border-t pt-4 space-y-4">
                           <h4 className="font-semibold text-sm text-red-700">Discharge {patient.patientAlias}</h4>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -576,10 +576,10 @@ export function AdminDashboard({ doctors, allUsers }: AdminDashboardProps) {
                           )}
                           <div className="flex items-center gap-2 text-xs text-gray-500">
                             <ImageIcon className="h-3 w-3" />
-                            Supports pasted screenshots (JPG, PNG, GIF, WebP)
+                            Supports pasted screenshots (JPG, PNG, GIF, WebP, max 4MB each)
                           </div>
                           <Button
-                            onClick={() => dischargePatient(patient.patientAlias)}
+                            onClick={() => dischargePatient(patient)}
                             variant="destructive"
                             className="w-full"
                           >

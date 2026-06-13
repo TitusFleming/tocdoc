@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUserRole } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { Role } from '@prisma/client'
+import { eventUpdateAdminSchema, reviewedOnlySchema } from '@/lib/validation'
 
 export async function PATCH(
   request: NextRequest,
@@ -25,37 +26,52 @@ export async function PATCH(
       if (event.doctorId !== userId) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
-      if (typeof body.reviewed !== 'boolean' || Object.keys(body).length !== 1) {
+      const parsed = reviewedOnlySchema.safeParse(body)
+      if (!parsed.success) {
         return NextResponse.json({ error: 'Can only update reviewed status' }, { status: 403 })
       }
       const updated = await prisma.event.update({
         where: { id },
-        data: { reviewed: body.reviewed },
+        data: { reviewed: parsed.data.reviewed },
       })
       return NextResponse.json({ event: updated })
     }
 
-    const {
-      status, patientAlias, dobMonthYear, diagnosis, hospitalName,
-      admissionDate, admissionTime, dischargeDate, dischargeTime,
-      dischargeNotes, doctorId, reviewed,
-    } = body
+    const parsed = eventUpdateAdminSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') },
+        { status: 400 }
+      )
+    }
+    const data = parsed.data
+
+    // Reassignment target must be an actual doctor.
+    if (data.doctorId) {
+      const target = await prisma.user.findUnique({
+        where: { id: data.doctorId },
+        select: { role: true },
+      })
+      if (!target || target.role !== Role.DOCTOR) {
+        return NextResponse.json({ error: 'Invalid doctor ID' }, { status: 400 })
+      }
+    }
 
     const updated = await prisma.event.update({
       where: { id },
       data: {
-        ...(status && { status }),
-        ...(patientAlias && { patientAlias }),
-        ...(dobMonthYear !== undefined && { dobMonthYear }),
-        ...(diagnosis && { diagnosis }),
-        ...(hospitalName && { hospitalName }),
-        ...(admissionDate && { admissionDate: new Date(admissionDate) }),
-        ...(admissionTime !== undefined && { admissionTime }),
-        ...(dischargeDate && { dischargeDate: new Date(dischargeDate) }),
-        ...(dischargeTime !== undefined && { dischargeTime }),
-        ...(dischargeNotes !== undefined && { dischargeNotes }),
-        ...(doctorId && { doctorId }),
-        ...(typeof reviewed === 'boolean' && { reviewed }),
+        ...(data.status && { status: data.status }),
+        ...(data.patientAlias && { patientAlias: data.patientAlias }),
+        ...(data.dobMonthYear !== undefined && { dobMonthYear: data.dobMonthYear }),
+        ...(data.diagnosis && { diagnosis: data.diagnosis }),
+        ...(data.hospitalName && { hospitalName: data.hospitalName }),
+        ...(data.admissionDate && { admissionDate: new Date(data.admissionDate) }),
+        ...(data.admissionTime !== undefined && { admissionTime: data.admissionTime || null }),
+        ...(data.dischargeDate && { dischargeDate: new Date(data.dischargeDate) }),
+        ...(data.dischargeTime !== undefined && { dischargeTime: data.dischargeTime || null }),
+        ...(data.dischargeNotes !== undefined && { dischargeNotes: data.dischargeNotes }),
+        ...(data.doctorId && { doctorId: data.doctorId }),
+        ...(typeof data.reviewed === 'boolean' && { reviewed: data.reviewed }),
       },
     })
 

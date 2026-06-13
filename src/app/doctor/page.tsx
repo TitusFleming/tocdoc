@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
+import { Role } from '@prisma/client'
 import prisma from '@/lib/prisma'
-import { getCurrentUserRole, requireDoctor } from '@/lib/auth'
+import { getCurrentUserRole } from '@/lib/auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -11,22 +12,20 @@ import { PrintButton } from '@/components/print-button'
 export const dynamic = 'force-dynamic'
 
 export default async function DoctorPage() {
-  try {
-    await requireDoctor()
-  } catch {
-    redirect('/admin')
-  }
+  const { user, role, userId, email } = await getCurrentUserRole()
 
-  const { userId, email } = await getCurrentUserRole()
-  if (!userId || !email) {
+  if (!user) {
     redirect('/sign-in')
+  }
+  if (role !== Role.DOCTOR || !userId || !email) {
+    redirect(role === Role.ADMIN ? '/admin' : '/pending')
   }
 
   const events = await prisma.event.findMany({
     where: { doctorId: userId },
     orderBy: { admissionDate: 'desc' },
     include: {
-      images: { select: { id: true, url: true, filename: true } },
+      images: { select: { id: true, filename: true } },
     },
   })
 
@@ -189,8 +188,8 @@ export default async function DoctorPage() {
                             <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Attached Images</div>
                             <div className="flex flex-wrap gap-2">
                               {event.images.map(img => (
-                                <a key={img.id} href={img.url} target="_blank" rel="noopener noreferrer">
-                                  <img src={img.url} alt={img.filename || 'Attachment'} className="h-24 w-24 object-cover rounded border hover:opacity-80 transition" />
+                                <a key={img.id} href={`/api/images/${img.id}`} target="_blank" rel="noopener noreferrer">
+                                  <img src={`/api/images/${img.id}`} alt={img.filename || 'Attachment'} className="h-24 w-24 object-cover rounded border hover:opacity-80 transition" />
                                 </a>
                               ))}
                             </div>

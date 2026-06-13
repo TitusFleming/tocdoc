@@ -3,6 +3,7 @@ import { getCurrentUserRole } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { Role } from '@prisma/client'
 import { sendEventNotification } from '@/lib/email'
+import { admissionSchema } from '@/lib/validation'
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,22 +15,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden - Admin only' }, { status: 403 })
     }
 
-    const body = await request.json()
-    const {
-      patientAlias,
-      dobMonthYear,
-      diagnosis,
-      hospitalName,
-      admissionDate,
-      admissionTime,
-      doctorId,
-      eventType = 'ADMIT',
-      dischargeNotes,
-    } = body
-
-    if (!patientAlias || !diagnosis || !hospitalName || !admissionDate || !doctorId) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    const parsed = admissionSchema.safeParse(await request.json())
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') },
+        { status: 400 }
+      )
     }
+
+    const {
+      patientAlias, dobMonthYear, diagnosis, hospitalName,
+      admissionDate, admissionTime, doctorId, eventType, dischargeNotes,
+    } = parsed.data
 
     const doctor = await prisma.user.findUnique({
       where: { id: doctorId },
@@ -41,13 +38,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (eventType === 'ADMIT') {
+      // Scoped to this doctor: different doctors may use the same patient label.
       const existingAdmission = await prisma.event.findFirst({
-        where: { patientAlias, status: 'ADMITTED' },
+        where: { patientAlias, doctorId, status: 'ADMITTED' },
       })
 
       if (existingAdmission) {
         return NextResponse.json(
-          { error: 'Patient is already admitted. Please discharge before re-admitting.' },
+          { error: 'This patient is already admitted under this doctor. Discharge before re-admitting.' },
           { status: 400 }
         )
       }
@@ -68,14 +66,14 @@ export async function POST(request: NextRequest) {
       await sendEventNotification(doctor.email, 'ADMISSION', doctorId)
 
       return NextResponse.json({ admission })
-    } else if (eventType === 'DISCHARGE') {
+    } else {
       const existingAdmission = await prisma.event.findFirst({
-        where: { patientAlias, status: 'ADMITTED' },
+        where: { patientAlias, doctorId, status: 'ADMITTED' },
       })
 
       if (!existingAdmission) {
         return NextResponse.json(
-          { error: 'No active admission found for this patient.' },
+          { error: 'No active admission found for this patient under this doctor.' },
           { status: 400 }
         )
       }
@@ -94,8 +92,6 @@ export async function POST(request: NextRequest) {
       await sendEventNotification(doctor.email, 'DISCHARGE', doctorId)
 
       return NextResponse.json({ discharge })
-    } else {
-      return NextResponse.json({ error: 'Invalid event type' }, { status: 400 })
     }
   } catch (error) {
     console.error('POST /api/admissions error:', error)

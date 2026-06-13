@@ -3,10 +3,12 @@ import { getCurrentUserRole } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { Role } from '@prisma/client'
 import { sendEventNotification } from '@/lib/email'
+import { dischargeSchema } from '@/lib/validation'
 
+// PATCH /api/events/[id]/discharge - Discharge a patient by event id
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ patientAlias: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { role, userId } = await getCurrentUserRole()
@@ -14,20 +16,21 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { patientAlias } = await params
-    const body = await request.json()
-    const { dischargeDate, dischargeTime, dischargeNotes } = body
+    const { id } = await params
 
-    if (!dischargeDate) {
-      return NextResponse.json({ error: 'Discharge date is required' }, { status: 400 })
+    const parsed = dischargeSchema.safeParse(await request.json())
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') },
+        { status: 400 }
+      )
     }
+    const { dischargeDate, dischargeTime, dischargeNotes } = parsed.data
 
-    const admission = await prisma.event.findFirst({
-      where: { patientAlias, status: 'ADMITTED' },
-    })
+    const admission = await prisma.event.findUnique({ where: { id } })
 
-    if (!admission) {
-      return NextResponse.json({ error: 'No active admission found for this patient' }, { status: 404 })
+    if (!admission || admission.status !== 'ADMITTED') {
+      return NextResponse.json({ error: 'No active admission found' }, { status: 404 })
     }
 
     if (role !== Role.ADMIN && admission.doctorId !== userId) {
@@ -40,7 +43,7 @@ export async function PATCH(
     }
 
     const dischargedPatient = await prisma.event.update({
-      where: { id: admission.id },
+      where: { id },
       data: {
         status: 'DISCHARGED',
         dischargeDate: dischargeDateObj,
@@ -58,7 +61,7 @@ export async function PATCH(
 
     return NextResponse.json({ patient: dischargedPatient })
   } catch (error) {
-    console.error('PATCH /api/patients/[patientAlias]/discharge error:', error)
+    console.error('PATCH /api/events/[id]/discharge error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

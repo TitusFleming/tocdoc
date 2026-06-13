@@ -57,7 +57,7 @@ model Event {
 model EventImage {
   id        String   @id @default(cuid())
   eventId   String
-  url       String
+  data      Bytes
   filename  String?
   mimeType  String
   createdAt DateTime @default(now())
